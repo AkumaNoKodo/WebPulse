@@ -1,53 +1,28 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use serde::{Deserialize, Serialize};
-use tokio::sync::{broadcast, RwLock};
+use tokio::sync::RwLock;
 use tokio::time;
 
 use crate::config::SchedulerConfig;
 use crate::db::DbPool;
 use crate::error::AppResult;
-use crate::models::{Heartbeat, Monitor, MonitorStatus};
+use crate::models::{Heartbeat, Monitor};
 use crate::services::checker::Checkable;
-use crate::services::heartbeat_checker::{check_heartbeat_status, heartbeat_to_monitor_status};
-
-pub type EventSender = broadcast::Sender<MonitorEvent>;
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MonitorEvent {
-    pub id: i64,
-    #[serde(rename = "eventType")]
-    pub event_type: EventType,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum EventType {
-    StatusChanged {
-        status: MonitorStatus,
-        response_time_ms: Option<i64>,
-    },
-    Checked {
-        status: MonitorStatus,
-        response_time_ms: Option<i64>,
-    },
-}
+use crate::services::heartbeat_checker::check_heartbeat_status;
 
 pub struct Scheduler {
     pool: DbPool,
     config: SchedulerConfig,
     shutdown_signal: Arc<RwLock<bool>>,
-    event_sender: EventSender,
 }
 
 impl Scheduler {
-    pub fn new(pool: DbPool, config: SchedulerConfig, event_sender: EventSender) -> Self {
+    pub fn new(pool: DbPool, config: SchedulerConfig) -> Self {
         Self {
             pool,
             config,
             shutdown_signal: Arc::new(RwLock::new(false)),
-            event_sender,
         }
     }
 
@@ -87,7 +62,6 @@ impl Scheduler {
         .await?;
 
         let pool = self.pool.clone();
-        let event_sender = self.event_sender.clone();
 
         for monitor in monitors {
             let checker = crate::services::http_checker::HttpChecker::new(
@@ -98,7 +72,6 @@ impl Scheduler {
             );
 
             let pool_clone = pool.clone();
-            let event_sender_clone = event_sender.clone();
             let monitor_clone = monitor.clone();
 
             tokio::spawn(async move {
@@ -115,16 +88,6 @@ impl Scheduler {
                         {
                             tracing::error!("Error recording check result: {}", e);
                         }
-
-                        let event = MonitorEvent {
-                            id: monitor_clone.id,
-                            event_type: EventType::Checked {
-                                status: check_result.status.clone(),
-                                response_time_ms: check_result.response_time_ms,
-                            },
-                        };
-
-                        let _ = event_sender_clone.send(event);
                     }
                     Err(e) => {
                         tracing::error!("Error checking monitor {}: {}", monitor_clone.id, e);
@@ -142,25 +105,16 @@ impl Scheduler {
             .await?;
 
         for heartbeat in heartbeats {
-            let status = check_heartbeat_status(
+            if let Err(e) = check_heartbeat_status(
                 &self.pool,
                 heartbeat.id,
                 heartbeat.expected_interval_secs,
                 heartbeat.grace_period_secs,
                 heartbeat.last_ping_at,
             )
-            .await?;
-
-            if heartbeat.status != status {
-                let monitor_status = heartbeat_to_monitor_status(&status);
-                let event = MonitorEvent {
-                    id: heartbeat.id,
-                    event_type: EventType::StatusChanged {
-                        status: monitor_status,
-                        response_time_ms: None,
-                    },
-                };
-                let _ = self.event_sender.send(event);
+            .await
+            {
+                tracing::error!("Error checking heartbeat {}: {}", heartbeat.id, e);
             }
         }
 

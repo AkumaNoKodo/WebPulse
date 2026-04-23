@@ -2,7 +2,7 @@ use chrono::{DateTime, Utc};
 
 use crate::db::DbPool;
 use crate::error::AppResult;
-use crate::models::{HeartbeatStatus, MonitorStatus};
+use crate::models::HeartbeatStatus;
 
 pub async fn check_heartbeat_status(
     pool: &DbPool,
@@ -56,13 +56,4 @@ pub async fn update_heartbeat_ping(pool: &DbPool, heartbeat_id: i64) -> AppResul
     .await?;
 
     Ok(())
-}
-
-pub fn heartbeat_to_monitor_status(status: &HeartbeatStatus) -> MonitorStatus {
-    match status {
-        HeartbeatStatus::Healthy => MonitorStatus::Up,
-        HeartbeatStatus::Late => MonitorStatus::Down,
-        HeartbeatStatus::Down => MonitorStatus::Down,
-        HeartbeatStatus::Unknown => MonitorStatus::Unknown,
-    }
 }

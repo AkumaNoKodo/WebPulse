@@ -64,28 +64,3 @@ pub async fn record_check_result(
     Ok(())
 }
 
-pub async fn cleanup_old_history(
-    pool: &DbPool,
-    monitor_id: i64,
-    keep_count: usize,
-) -> AppResult<()> {
-    sqlx::query(
-        r#"
-        DELETE FROM history 
-        WHERE monitor_id = ? 
-        AND id NOT IN (
-            SELECT id FROM history 
-            WHERE monitor_id = ? 
-            ORDER BY checked_at DESC 
-            LIMIT ?
-        )
-        "#,
-    )
-    .bind(monitor_id)
-    .bind(monitor_id)
-    .bind(keep_count as i64)
-    .execute(pool)
-    .await?;
-
-    Ok(())
-}

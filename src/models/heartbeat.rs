@@ -76,15 +76,6 @@ pub struct CreateHeartbeat {
     pub grace_period_secs: Option<i64>,
 }
 
-impl CreateHeartbeat {
-    pub fn new(name: String) -> Self {
-        Self {
-            name,
-            expected_interval_secs: None,
-            grace_period_secs: None,
-        }
-    }
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HeartbeatUpdate {

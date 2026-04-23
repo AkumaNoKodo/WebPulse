@@ -1,37 +1,32 @@
 use axum::Router;
 use std::sync::Arc;
 use tokio::signal;
-use tokio::sync::broadcast;
 use tracing::info;
 use tracing_subscriber::EnvFilter;
 
 use rustpulse::api::{heartbeat_router, monitor_router};
 use rustpulse::config::Config;
 use rustpulse::db::{create_pool, run_migrations, DbPool};
-use rustpulse::services::scheduler::{MonitorEvent, Scheduler};
-use rustpulse::sse;
+use rustpulse::services::scheduler::Scheduler;
 use rustpulse::web;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    let config = Config::from_file("config.toml")?;
+
+    let log_directive = format!("rustpulse={}", config.logging.level);
     tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::from_default_env().add_directive("rustpulse=info".parse()?))
+        .with_env_filter(
+            EnvFilter::from_default_env().add_directive(log_directive.parse()?),
+        )
         .init();
 
     info!("Starting RustPulse...");
 
-    let config = Config::from_file("config.toml")?;
-
     let pool = create_pool(&config.database).await?;
     run_migrations(&pool).await?;
 
-    let (event_sender, _) = broadcast::channel::<MonitorEvent>(100);
-
-    let scheduler = Arc::new(Scheduler::new(
-        pool.clone(),
-        config.scheduler.clone(),
-        event_sender.clone(),
-    ));
+    let scheduler = Arc::new(Scheduler::new(pool.clone(), config.scheduler.clone()));
 
     let scheduler_clone = scheduler.clone();
     tokio::spawn(async move {
@@ -39,10 +34,7 @@ async fn main() -> anyhow::Result<()> {
     });
 
     let app = Router::new()
-        .nest(
-            "/api",
-            create_api_router(pool.clone(), event_sender.clone()),
-        )
+        .nest("/api", create_api_router(pool.clone()))
         .merge(web::web_router(pool.clone()));
 
     let addr = config.server.address();
@@ -62,11 +54,10 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn create_api_router(pool: DbPool, event_sender: broadcast::Sender<MonitorEvent>) -> Router {
+fn create_api_router(pool: DbPool) -> Router {
     Router::new()
         .nest("/monitors", monitor_router(pool.clone()))
-        .nest("/heartbeats", heartbeat_router(pool.clone()))
-        .nest("/sse", sse::router(pool, event_sender))
+        .nest("/heartbeats", heartbeat_router(pool))
 }
 
 async fn shutdown_signal() {
