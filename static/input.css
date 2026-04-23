@@ -1,0 +1,35 @@
+@import "tailwindcss";
+
+@theme {
+    --font-family-mono: 'JetBrains Mono', monospace;
+    --color-green-400: #00ff41;
+    --color-green-500: #00ff41;
+    --color-green-700: #00ff4180;
+    --color-green-800: #00ff4140;
+    --color-green-900: #00ff4120;
+    --color-green-950: #00ff4108;
+}
+
+@layer base {
+    * { font-family: 'JetBrains Mono', monospace; }
+    ::-webkit-scrollbar { width: 8px; }
+    ::-webkit-scrollbar-track { background: #030303; }
+    ::-webkit-scrollbar-thumb { background: #00ff41; border-radius: 4px; }
+    ::selection { background: #00ff41; color: #000; }
+}
+
+@layer utilities {
+    @keyframes matrix-fall {
+        0% { transform: translateY(-100%); opacity: 0; }
+        10% { opacity: 0.8; }
+        90% { opacity: 0.8; }
+        100% { transform: translateY(100vh); opacity: 0; }
+    }
+    .matrix-char {
+        animation: matrix-fall linear infinite;
+        position: absolute;
+        color: #00ff41;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 12px;
+    }
+}

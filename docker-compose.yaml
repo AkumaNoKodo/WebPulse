@@ -1,0 +1,17 @@
+services:
+  rustpulse:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: rustpulse
+    ports:
+      - "3000:3000"
+    volumes:
+      - rustpulse_data:/data
+    environment:
+      - RUST_LOG=info
+    restart: unless-stopped
+
+volumes:
+  rustpulse_data:
+    driver: local

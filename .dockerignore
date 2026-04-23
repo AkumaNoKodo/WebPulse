@@ -1,0 +1,10 @@
+.git
+.gitignore
+target
+frontend
+*.db
+*.db-shm
+*.db-wal
+.env
+.env.*
+README.md

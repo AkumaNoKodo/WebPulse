@@ -1,0 +1,36 @@
+<div class="fixed inset-0 bg-black/90 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div class="bg-black/80 border border-green-700 rounded-xl w-full max-w-md">
+        <div class="bg-green-900/20 border-b border-green-900 px-6 py-4 flex justify-between items-center">
+            <h3 class="text-lg font-bold">◈ EDIT MONITOR</h3>
+            <button hx-get="/clear-modal" hx-target="#modal-container" hx-swap="innerHTML" class="text-green-700 hover:text-green-400">✕</button>
+        </div>
+        <form hx-post="/monitors/{{ monitor.id }}" hx-target="#monitors-grid" hx-swap="innerHTML"
+              hx-on::after-request="document.getElementById('modal-container').innerHTML=''" class="p-6 space-y-5">
+            <input type="hidden" name="id" value="{{ monitor.id }}">
+            <div class="space-y-2">
+                <label class="text-green-700 text-xs">SERVICE NAME</label>
+                <input name="name" type="text" value="{{ monitor.name }}" required
+                    class="w-full bg-black/50 border border-green-900 rounded px-4 py-3 text-green-400 placeholder-green-800 focus:border-green-500 focus:outline-none transition-colors">
+            </div>
+            <div class="space-y-2">
+                <label class="text-green-700 text-xs">TARGET URL</label>
+                <input name="url" type="url" value="{{ monitor.url }}" required
+                    class="w-full bg-black/50 border border-green-900 rounded px-4 py-3 text-green-400 placeholder-green-800 focus:border-green-500 focus:outline-none transition-colors font-mono text-sm">
+            </div>
+            <div class="space-y-2">
+                <label class="text-green-700 text-xs">CHECK INTERVAL (SECONDS)</label>
+                <input name="interval_seconds" type="number" value="{{ monitor.interval_seconds }}" min="10" required
+                    class="w-full bg-black/50 border border-green-900 rounded px-4 py-3 text-green-400 focus:border-green-500 focus:outline-none transition-colors">
+            </div>
+            <div class="flex gap-3 pt-2">
+                <button type="button" hx-get="/clear-modal" hx-target="#modal-container" hx-swap="innerHTML"
+                    class="flex-1 bg-black/50 hover:bg-black/40 border border-green-900/50 py-3 rounded transition-all">
+                    CANCEL
+                </button>
+                <button type="submit" class="flex-1 bg-green-900/30 hover:bg-green-900/50 border border-green-700 text-green-400 py-3 rounded transition-all font-bold">
+                    UPDATE MONITOR
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
