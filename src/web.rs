@@ -5,8 +5,8 @@ use axum::{
     routing::{get, post},
     Router,
 };
-use tower_http::services::ServeDir;
 use serde::Deserialize;
+use tower_http::services::ServeDir;
 
 use crate::db::DbPool;
 use crate::models::{History, Monitor};
@@ -20,7 +20,7 @@ struct MonitorView {
     interval_seconds: i64,
     status: String,
     last_check: String,
-    uptime: f64,        // 0.0 – 1.0, or -1.0 if no data
+    uptime: f64, // 0.0 – 1.0, or -1.0 if no data
     uptime_str: String,
     avg_response_ms: String,
     sparkline: String,
@@ -48,10 +48,7 @@ impl MonitorView {
 
         // Average response time (only successful checks)
         let avg_response_ms = {
-            let times: Vec<i64> = history
-                .iter()
-                .filter_map(|h| h.response_time_ms)
-                .collect();
+            let times: Vec<i64> = history.iter().filter_map(|h| h.response_time_ms).collect();
             if times.is_empty() {
                 "N/A".to_string()
             } else {
@@ -83,7 +80,11 @@ impl MonitorView {
 /// Down checks shown as red dots. Max value label on Y axis.
 fn build_sparkline(history: &[History]) -> String {
     let points: Vec<&History> = {
-        let start = if history.len() > 50 { history.len() - 50 } else { 0 };
+        let start = if history.len() > 50 {
+            history.len() - 50
+        } else {
+            0
+        };
         history[start..].iter().collect()
     };
 
@@ -91,7 +92,7 @@ fn build_sparkline(history: &[History]) -> String {
         return String::new();
     }
 
-    let w = 260.0_f64;  // extra 60px left for y-axis labels
+    let w = 260.0_f64; // extra 60px left for y-axis labels
     let h = 48.0_f64;
     let plot_x = 36.0_f64; // left margin for labels
     let plot_w = w - plot_x;
@@ -106,7 +107,12 @@ fn build_sparkline(history: &[History]) -> String {
         .iter()
         .enumerate()
         .map(|(i, p)| {
-            let x = plot_x + if n == 1 { plot_w / 2.0 } else { i as f64 * plot_w / (n - 1) as f64 };
+            let x = plot_x
+                + if n == 1 {
+                    plot_w / 2.0
+                } else {
+                    i as f64 * plot_w / (n - 1) as f64
+                };
             let y = match p.response_time_ms {
                 Some(ms) => h - (ms as f64 / max_val * (h - 6.0)) - 3.0,
                 None => 3.0,
@@ -120,8 +126,16 @@ fn build_sparkline(history: &[History]) -> String {
         .enumerate()
         .filter(|(_, p)| matches!(p.status, crate::models::HistoryStatus::Down))
         .map(|(i, _)| {
-            let x = plot_x + if n == 1 { plot_w / 2.0 } else { i as f64 * plot_w / (n - 1) as f64 };
-            format!("<circle cx=\"{:.1}\" cy=\"3\" r=\"2.5\" fill=\"#ef4444\"/>", x)
+            let x = plot_x
+                + if n == 1 {
+                    plot_w / 2.0
+                } else {
+                    i as f64 * plot_w / (n - 1) as f64
+                };
+            format!(
+                "<circle cx=\"{:.1}\" cy=\"3\" r=\"2.5\" fill=\"#ef4444\"/>",
+                x
+            )
         })
         .collect();
 
@@ -269,7 +283,13 @@ async fn index(
     let offline = monitors.iter().filter(|m| m.status == "down").count();
     let pending = monitors.iter().filter(|m| m.status == "unknown").count();
 
-    let template = MonitorsTemplate { monitors, total, online, offline, pending };
+    let template = MonitorsTemplate {
+        monitors,
+        total,
+        online,
+        offline,
+        pending,
+    };
     Ok(Html(template.render().unwrap()))
 }
 
@@ -283,7 +303,12 @@ async fn partial_stats(
     let offline = monitors.iter().filter(|m| m.status == "down").count();
     let pending = monitors.iter().filter(|m| m.status == "unknown").count();
 
-    let template = StatsTemplate { total, online, offline, pending };
+    let template = StatsTemplate {
+        total,
+        online,
+        offline,
+        pending,
+    };
     Ok(Html(template.render().unwrap()))
 }
 
@@ -325,7 +350,9 @@ async fn edit_monitor_form(
     .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     let monitor_view = MonitorView::from_monitor_with_history(monitor, &history);
-    let template = EditMonitorFormTemplate { monitor: monitor_view };
+    let template = EditMonitorFormTemplate {
+        monitor: monitor_view,
+    };
     Ok(Html(template.render().unwrap()))
 }
 
@@ -364,7 +391,9 @@ async fn update_monitor(
     .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     let monitor_view = MonitorView::from_monitor_with_history(monitor, &history);
-    let template = EditMonitorFormTemplate { monitor: monitor_view };
+    let template = EditMonitorFormTemplate {
+        monitor: monitor_view,
+    };
     Ok(Html(template.render().unwrap()))
 }
 
@@ -440,7 +469,10 @@ pub fn web_router(pool: DbPool) -> Router {
         .route("/partial/monitors", get(partial_monitors))
         .route("/monitors/new", get(new_monitor_form))
         .route("/monitors/{id}/edit", get(edit_monitor_form))
-        .route("/monitors/{id}", post(update_monitor).delete(delete_monitor))
+        .route(
+            "/monitors/{id}",
+            post(update_monitor).delete(delete_monitor),
+        )
         .route("/monitors/{id}/history", get(monitor_history))
         .route("/monitors", post(create_monitor))
         .route("/clear-modal", get(clear_modal))

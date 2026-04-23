@@ -17,8 +17,7 @@ WORKDIR /build
 RUN rustup target add x86_64-unknown-linux-musl && \
     apt-get update && apt-get install -y \
     musl-tools \
-    pkg-config \
-    && rm -rf /var/lib/apt/lists/*
+    pkg-config
 
 COPY Cargo.toml ./
 COPY Cargo.lock ./
