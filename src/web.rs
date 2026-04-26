@@ -27,9 +27,9 @@ struct MonitorView {
 }
 
 impl MonitorView {
-    fn from_monitor_with_history(m: Monitor, history: &[History]) -> Self {
-        let status = m.status.to_string();
-        let last_check = m
+    fn from_monitor_with_history(monitor: Monitor, history: &[History]) -> Self {
+        let status = monitor.status.to_string();
+        let last_check = monitor
             .last_check_at
             .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
             .unwrap_or_else(|| "Never".to_string());
@@ -53,7 +53,7 @@ impl MonitorView {
                 "N/A".to_string()
             } else {
                 let avg = times.iter().sum::<i64>() / times.len() as i64;
-                format!("{}ms", avg)
+                format!("{avg}ms")
             }
         };
 
@@ -61,10 +61,10 @@ impl MonitorView {
         let sparkline = build_sparkline(history);
 
         MonitorView {
-            id: m.id,
-            name: m.name,
-            url: m.url,
-            interval_seconds: m.check_interval_secs,
+            id: monitor.id,
+            name: monitor.name,
+            url: monitor.url,
+            interval_seconds: monitor.check_interval_secs,
             status,
             last_check,
             uptime,
@@ -273,6 +273,7 @@ async fn fetch_monitor_views(
     }
     Ok(views)
 }
+
 async fn index(
     State(pool): State<DbPool>,
 ) -> Result<Html<String>, (axum::http::StatusCode, String)> {
@@ -363,7 +364,7 @@ async fn update_monitor(
 ) -> Result<Html<String>, (axum::http::StatusCode, String)> {
     sqlx::query(
         r#"
-        UPDATE monitors 
+        UPDATE monitors
         SET name = ?, url = ?, check_interval_secs = ?, updated_at = datetime('now')
         WHERE id = ?
         "#,

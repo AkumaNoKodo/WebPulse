@@ -63,4 +63,3 @@ pub async fn record_check_result(
 
     Ok(())
 }
-

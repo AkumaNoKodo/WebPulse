@@ -16,9 +16,7 @@ async fn main() -> anyhow::Result<()> {
 
     let log_directive = format!("rustpulse={}", config.logging.level);
     tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::from_default_env().add_directive(log_directive.parse()?),
-        )
+        .with_env_filter(EnvFilter::from_default_env().add_directive(log_directive.parse()?))
         .init();
 
     info!("Starting RustPulse...");

@@ -76,7 +76,6 @@ pub struct CreateHeartbeat {
     pub grace_period_secs: Option<i64>,
 }
 
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HeartbeatUpdate {
     pub name: Option<String>,
