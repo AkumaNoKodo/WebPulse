@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="RustPulse: High-performance real-time server monitoring. Track uptime, system metrics, and service availability with the speed and reliability of Rust.">
     <title>{% block title %}RustPulse{% endblock %}</title>
     <link href="/static/output.css" rel="stylesheet">
     <script src="https://unpkg.com/htmx.org@1.9.12"></script>
@@ -18,7 +19,7 @@
                 <h1 class="text-xl font-bold tracking-wider">RUSTPULSE</h1>
                 <span class="text-green-700 text-sm">// SYSTEM ONLINE</span>
             </div>
-            <button 
+            <button
                 hx-get="/monitors/new"
                 hx-target="#modal-container"
                 hx-swap="innerHTML"
