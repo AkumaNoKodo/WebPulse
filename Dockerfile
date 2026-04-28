@@ -1,15 +1,4 @@
-# ── Stage 1: Tailwind CSS build ───────────────────────────────────────────────
-FROM node:24-slim AS tailwind
-
-WORKDIR /tw
-
-COPY static/input.css ./static/input.css
-COPY templates ./templates
-
-RUN npm install -D @tailwindcss/cli && \
-    npx @tailwindcss/cli -i ./static/input.css -o ./static/output.css --minify
-
-# ── Stage 2: Rust build ───────────────────────────────────────────────────────
+# Stage 1: Builder ──────────────────────────────────────────────────────────
 FROM rust:1.95 AS builder
 
 WORKDIR /build
@@ -24,13 +13,14 @@ COPY Cargo.lock ./
 COPY src ./src
 COPY templates ./templates
 COPY migrations ./migrations
+COPY static ./static
 
 RUN cargo build --release --target x86_64-unknown-linux-musl
 
 # Create /data dir here so we can COPY it into scratch (scratch has no shell)
 RUN mkdir -p /data
 
-# ── Stage 3: Runtime image ────────────────────────────────────────────────────
+# Runtime image ────────────────────────────────────────────────────────────
 FROM scratch
 
 WORKDIR /app
@@ -42,8 +32,8 @@ COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certifi
 COPY --from=builder /data /data
 
 COPY --from=builder /build/target/x86_64-unknown-linux-musl/release/rustpulse /app/rustpulse
-COPY --from=tailwind /tw/static/output.css /app/static/output.css
 COPY config.toml /app/config.toml
+COPY --from=builder /build/static /app/static
 
 EXPOSE 3000
 

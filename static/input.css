@@ -2,12 +2,16 @@
 
 @theme {
     --font-family-mono: 'JetBrains Mono', monospace;
+
     --color-green-400: #00ff41;
     --color-green-500: #00ff41;
     --color-green-700: #00ff4180;
     --color-green-800: #00ff4140;
     --color-green-900: #00ff4120;
     --color-green-950: #00ff4108;
+
+    --color-red-500: #ef4444;
+    --color-yellow-500: #eab308;
 }
 
 @layer base {
