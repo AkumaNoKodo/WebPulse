@@ -12,7 +12,8 @@ use rustpulse::web;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let config = Config::from_file("config.toml")?;
+    let config_path = std::env::var("CONFIG_FILE").unwrap_or_else(|_| "config.toml".to_string());
+    let config = Config::from_file(&config_path)?;
 
     let log_directive = format!("rustpulse={}", config.logging.level);
     tracing_subscriber::fmt()

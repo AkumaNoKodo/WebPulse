@@ -8,6 +8,36 @@
     <link href="/static/output.css" rel="stylesheet">
     <script src="https://unpkg.com/htmx.org@1.9.12"></script>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+      /* ASCII chart auto-sizing.
+         .monitor-card-root acts as an inline-size container.
+         The <pre data-chart-cols="N"> uses font-size so that exactly N
+         monospace characters fill the container width.
+         JetBrains Mono ch/em ratio ≈ 0.601.
+         Each bar column is 1 char + 1 space = 2 chars except the last = 2N-1 chars total.
+         We encode the total char count in the custom property via an inline style
+         set by the server. */
+      .monitor-card-root {
+        container-type: inline-size;
+      }
+      pre.ascii-chart {
+        /* font-size scales so that --chart-char-count chars = 100% container width.
+           formula: font-size = container_width / (char_count * ch_per_em)
+           expressed as: font-size = 100cqi / (var(--chart-char-count) * 0.601)
+           Tailwind's text-xs = 0.75rem; we clamp to never exceed that. */
+        font-size: clamp(
+          6px,
+          calc(100cqi / (var(--chart-char-count, 99) * 0.601)),
+          0.75rem
+        );
+        line-height: 1;
+        overflow: hidden;
+        white-space: pre;
+        width: 100%;
+        font-family: 'JetBrains Mono', monospace;
+        color: #22c55e; /* green-500 */
+      }
+    </style>
     {% block head %}{% endblock %}
 </head>
 <body class="bg-black text-green-400 font-mono min-h-screen">
@@ -16,17 +46,31 @@
         <div class="flex justify-between items-center max-w-7xl mx-auto">
             <div class="flex items-center gap-3">
                 <span class="text-2xl animate-pulse">◉</span>
-                <h1 class="text-xl font-bold tracking-wider">RUSTPULSE</h1>
+                <h1 class="text-xl font-bold tracking-wider">WebPulse</h1>
                 <span class="text-green-700 text-sm">// SYSTEM ONLINE</span>
             </div>
-            <button
-                hx-get="/monitors/new"
-                hx-target="#modal-container"
-                hx-swap="innerHTML"
-                class="bg-green-900/50 hover:bg-green-900 border border-green-700 px-4 py-2 rounded transition-all flex items-center gap-2">
-                <span class="text-lg">+</span>
-                <span>NEW MONITOR</span>
-            </button>
+            <div class="flex items-center gap-4">
+                <!-- Poll interval control -->
+                <div class="flex items-center gap-2 text-xs text-green-700">
+                    <span class="hidden sm:inline">REFRESH</span>
+                    <input
+                        id="poll-interval"
+                        type="number"
+                        min="1" max="300" value="10"
+                        class="w-16 bg-black border border-green-900 text-green-400 text-center rounded px-1 py-1 focus:outline-none focus:border-green-600"
+                        title="Poll interval in seconds (1–300)"
+                    >
+                    <span>s</span>
+                </div>
+                <button
+                    hx-get="/monitors/new"
+                    hx-target="#modal-container"
+                    hx-swap="innerHTML"
+                    class="bg-green-900/50 hover:bg-green-900 border border-green-700 px-4 py-2 rounded transition-all flex items-center gap-2">
+                    <span class="text-lg">+</span>
+                    <span>NEW MONITOR</span>
+                </button>
+            </div>
         </div>
     </nav>
 
@@ -39,5 +83,23 @@
     <div id="modal-container"></div>
 
     {% block scripts %}{% endblock %}
+    <script>
+      (function () {
+        var input = document.getElementById('poll-interval');
+        if (!input) return;
+
+        function applyInterval(secs) {
+          var s = Math.min(300, Math.max(1, parseInt(secs, 10) || 10));
+          var trigger = 'load, every ' + s + 's';
+          document.querySelectorAll('[data-poll]').forEach(function (el) {
+            el.setAttribute('hx-trigger', trigger);
+            htmx.process(el);
+          });
+        }
+
+        input.addEventListener('change', function () { applyInterval(this.value); });
+        input.addEventListener('blur',   function () { applyInterval(this.value); });
+      })();
+    </script>
 </body>
 </html>

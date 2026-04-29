@@ -4,7 +4,8 @@
 
 {% block content %}
 <!-- Stats Grid with HTMX -->
-<div hx-get="/partial/stats" 
+<div data-poll
+     hx-get="/partial/stats"
      hx-trigger="load, every 10s"
      hx-swap="innerHTML">
     <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
@@ -51,7 +52,9 @@
 
 <!-- Monitors Grid with HTMX -->
 <div id="monitors-grid"
-     hx-get="/partial/monitors" 
+     data-poll
+     class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6"
+     hx-get="/partial/monitors"
      hx-trigger="load, every 10s"
      hx-swap="innerHTML">
     {% include "components/monitor_grid.html" %}

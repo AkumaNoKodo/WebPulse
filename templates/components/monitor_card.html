@@ -1,4 +1,4 @@
-<div class="bg-black/80 border border-green-900 rounded-lg p-5 hover:border-green-600 transition-all flex flex-col gap-4">
+<div class="monitor-card-root bg-black/80 border border-green-900 rounded-lg p-5 hover:border-green-600 transition-all flex flex-col gap-4">
 
   <!-- Header: status dot + name + badge -->
   <div class="flex justify-between items-start">
@@ -48,12 +48,12 @@
     </div>
   </div>
 
-  <!-- Sparkline -->
+  <!-- ASCII chart -->
   <div class="border-t border-green-900/50 pt-3">
     <div class="text-green-700 text-xs mb-1">RESPONSE TIME</div>
-    <div class="w-full overflow-hidden" style="height:48px">
+    <div class="w-full">
       {% if monitor.sparkline.is_empty() %}
-      <div class="text-green-900 text-xs flex items-center justify-center h-full">NO DATA</div>
+      <div class="text-green-900 text-xs py-2 text-center">NO DATA</div>
       {% else %}
       {{ monitor.sparkline|safe }}
       {% endif %}
@@ -63,6 +63,31 @@
   <!-- Action buttons -->
   <div class="flex gap-2 border-t border-green-900/50 pt-3">
     <button
+      hx-post="/monitors/{{ monitor.id }}/check"
+      hx-target="closest div.monitor-card-root"
+      hx-swap="outerHTML"
+      hx-indicator="#spin-{{ monitor.id }}"
+      class="flex-1 flex items-center justify-center gap-1 px-3 py-2 rounded border border-green-900 bg-black/40
+             text-green-600 text-xs font-bold tracking-wider
+             hover:bg-green-900/40 hover:border-green-500 hover:text-green-300
+             focus:outline-none focus:ring-1 focus:ring-green-500
+             transition-all duration-150">
+      <span id="spin-{{ monitor.id }}" class="htmx-indicator">⟳</span>
+      ▶ CHECK LINK
+    </button>
+    <button
+      hx-delete="/monitors/{{ monitor.id }}/history/clear"
+      hx-target="closest div.monitor-card-root"
+      hx-swap="outerHTML"
+      hx-confirm="Clear all history for {{ monitor.name }}?"
+      class="flex-1 flex items-center justify-center gap-1 px-3 py-2 rounded border border-green-900/60 bg-black/40
+             text-green-700 text-xs font-bold tracking-wider
+             hover:bg-green-900/30 hover:border-green-500 hover:text-green-400
+             focus:outline-none focus:ring-1 focus:ring-green-700
+             transition-all duration-150">
+      ⌫ CLEAR HISTORY
+    </button>
+    <button
       hx-get="/monitors/{{ monitor.id }}/edit"
       hx-target="#modal-container"
       hx-swap="innerHTML"
@@ -71,7 +96,7 @@
              hover:bg-green-900/40 hover:border-green-500 hover:text-green-300
              focus:outline-none focus:ring-1 focus:ring-green-500
              transition-all duration-150">
-      ✎ EDIT
+      ✎ EDIT MONITOR
     </button>
     <button
       hx-delete="/monitors/{{ monitor.id }}"
@@ -83,7 +108,7 @@
              hover:bg-red-900/30 hover:border-red-500 hover:text-red-400
              focus:outline-none focus:ring-1 focus:ring-red-600
              transition-all duration-150">
-      ✕ DELETE
+      ✕ DELETE MONITOR
     </button>
   </div>
 
