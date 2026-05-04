@@ -1,4 +1,4 @@
-# RustPulse
+# WebPulse
 
 A high-performance, self-hosted uptime monitoring tool written in Rust. Monitor HTTP endpoints and heartbeats in real time with a lightweight web dashboard — no external services required.
 
@@ -8,7 +8,7 @@ A high-performance, self-hosted uptime monitoring tool written in Rust. Monitor 
 ## Features
 
 - **HTTP uptime monitoring** — periodically checks URLs, records status (up/down), response times, and maintains a rolling history
-- **Heartbeat monitoring** — dead man's switch pattern; external services ping RustPulse to prove they are alive; statuses: `healthy`, `late`, `down`, `unknown`
+- **Heartbeat monitoring** — dead man's switch pattern; external services ping webpulse to prove they are alive; statuses: `healthy`, `late`, `down`, `unknown`
 - **Real-time dashboard** — auto-refreshes every 10 seconds via HTMX, no JS framework required
 - **Sparklines** — inline SVG response-time graphs per monitor with red markers for down events
 - **REST JSON API** — full CRUD for monitors and heartbeats
@@ -25,8 +25,8 @@ A high-performance, self-hosted uptime monitoring tool written in Rust. Monitor 
 
 ```bash
 # 1. Clone
-git clone https://github.com/youruser/rustpulse.git
-cd rustpulse
+git clone https://github.com/youruser/webpulse.git
+cd webpulse
 
 # 2. Build CSS (required)
 npm install
@@ -47,13 +47,13 @@ Open `http://localhost:3000`.
 docker compose up --build
 ```
 
-The SQLite database is persisted to a Docker volume (`rustpulse_data`).
+The SQLite database is persisted to a Docker volume (`webpulse_data`).
 
 ### Docker
 
 ```bash
-docker build -t rustpulse .
-docker run -p 3000:3000 -v rustpulse_data:/data rustpulse
+docker build -t webpulse .
+docker run -p 3000:3000 -v webpulse_data:/data webpulse
 ```
 
 ---
@@ -68,7 +68,7 @@ host = "0.0.0.0"
 port = 3000
 
 [database]
-path = "/data/rustpulse.db"   # use "db.sqlite" for local dev
+path = "/data/webpulse.db"   # use "db.sqlite" for local dev
 max_connections = 10
 
 [scheduler]
