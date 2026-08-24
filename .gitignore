@@ -24,6 +24,12 @@ node_modules
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
 
+# Generated assets
+static/output.css
+
+# Downloaded tooling
+/bin
+
 # Dev artifacts
 config.dev.toml
 dev.db

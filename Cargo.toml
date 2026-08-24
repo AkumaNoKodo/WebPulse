@@ -2,30 +2,31 @@
 name = "rustpulse"
 version = "0.1.0"
 edition = "2021"
-rust-version = "1.95"
+rust-version = "1.98"
 description = "High-performance Uptime Checker"
 authors = ["RustPulse"]
 license = "MIT"
 
 [dependencies]
 axum = "0.8.9"
-tower-http = { version = "0.6.8", features = ["fs"] }
+tower-http = { version = "0.7.0", features = ["fs"] }
 
-tokio = { version = "1.52", features = ["rt-multi-thread", "macros", "net", "sync", "time", "signal"] }
+tokio = { version = "1.53", features = ["rt-multi-thread", "macros", "net", "sync", "time", "signal"] }
 
-sqlx = { version = "0.8.6", features = [
-    "runtime-tokio-rustls",
+sqlx = { version = "0.9.0", features = [
+    "runtime-tokio",
+    "tls-rustls",
     "sqlite",
     "chrono",
     "migrate",
 ] }
 
-reqwest = { version = "0.13.2", default-features = false, features = ["rustls"] }
+reqwest = { version = "0.13.4", default-features = false, features = ["rustls"] }
 
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 
-askama = "0.15.6"
+askama = "0.16.0"
 
 toml = "1.1"
 
