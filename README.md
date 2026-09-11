@@ -2,7 +2,7 @@
 
 A high-performance, self-hosted uptime monitoring tool written in Rust. Monitor HTTP endpoints and heartbeats in real time with a lightweight web dashboard — no external services required.
 
-![Dashboard](https://img.shields.io/badge/status-active-brightgreen) ![Rust](https://img.shields.io/badge/Rust-1.95%2B-orange)
+![Dashboard](https://img.shields.io/badge/status-active-brightgreen) ![Rust](https://img.shields.io/badge/Rust-1.98%2B-orange)
 ---
 
 ## Features
@@ -21,7 +21,7 @@ A high-performance, self-hosted uptime monitoring tool written in Rust. Monitor 
 
 ### Native
 
-**Prerequisites:** Rust >= 1.95, Node.js + npm
+**Prerequisites:** Rust >= 1.98
 
 ```bash
 # 1. Clone
@@ -29,8 +29,7 @@ git clone https://github.com/youruser/webpulse.git
 cd webpulse
 
 # 2. Build CSS (required)
-npm install
-npm run build:css
+make css
 
 # 3. Configure (edit database path for local dev)
 # In config.toml set: path = "db.sqlite"
@@ -92,10 +91,10 @@ level = "info"   # error | warn | info | debug | trace
 | Language | Rust 2021 |
 | Async runtime | Tokio |
 | Web framework | Axum 0.8 |
-| Database | SQLite via SQLx 0.8 |
+| Database | SQLite via SQLx 0.9 |
 | HTTP client | reqwest 0.13 (rustls) |
-| Templating | Askama 0.15 (compile-time Jinja2) |
-| Frontend | HTMX 1.9 + Tailwind CSS v4 |
+| Templating | Askama 0.16 (compile-time Jinja2) |
+| Frontend | HTMX 1.9 + Tailwind CSS 4.3 |
 | Container | Docker multi-stage → `scratch` image |
 
 ---
@@ -104,7 +103,7 @@ level = "info"   # error | warn | info | debug | trace
 
 ```bash
 # Watch CSS changes
-npm run watch:css
+make dev-css
 
 # Run with debug logging
 RUST_LOG=debug cargo run
@@ -113,6 +112,6 @@ RUST_LOG=debug cargo run
 cargo test
 ```
 
-The dashboard is served at `http://localhost:3000`. Template changes require recompilation (Askama is compile-time). CSS changes are picked up automatically when using `watch:css`.
+The dashboard is served at `http://localhost:3000`. Template changes require recompilation (Askama is compile-time). CSS changes are picked up automatically when using `make dev-css`.
 
 ---
