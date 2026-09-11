@@ -26,6 +26,16 @@
         font-family: 'JetBrains Mono', monospace;
         color: var(--color-green-500);
       }
+      @keyframes toast-flash {
+        0%   { opacity: 0; transform: translateY(0.5rem); }
+        8%   { opacity: 1; transform: translateY(0); }
+        75%  { opacity: 1; transform: translateY(0); }
+        100% { opacity: 0; transform: translateY(0.5rem); visibility: hidden; }
+      }
+      .toast-flash {
+        animation: toast-flash 4s ease forwards;
+        pointer-events: none;
+      }
     </style>
     {% block head %}{% endblock %}
 </head>
@@ -65,6 +75,7 @@
     </main>
 
     <div id="modal-container"></div>
+    <div id="toast"></div>
 
     {% block scripts %}{% endblock %}
     <script>

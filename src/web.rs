@@ -181,6 +181,12 @@ struct EditMonitorFormTemplate {
 }
 
 #[derive(Template)]
+#[template(path = "components/toast.html")]
+struct ToastTemplate {
+    message: &'static str,
+}
+
+#[derive(Template)]
 #[template(path = "components/monitor_history.html")]
 struct MonitorHistoryTemplate {
     name: String,
@@ -241,7 +247,7 @@ async fn create_monitor(
 ) -> WebResult {
     store::create_monitor(&state, input).await?;
 
-    render_grid(&state).await
+    render_grid_with_toast(&state, "MONITOR CREATED").await
 }
 
 async fn update_monitor(
@@ -251,13 +257,13 @@ async fn update_monitor(
 ) -> WebResult {
     store::update_monitor(&state, id, input).await?;
 
-    render_grid(&state).await
+    render_grid_with_toast(&state, "MONITOR UPDATED").await
 }
 
 async fn delete_monitor(State(state): State<AppState>, Path(id): Path<i64>) -> WebResult {
     store::delete_monitor(&state, id).await?;
 
-    render_grid(&state).await
+    render_grid_with_toast(&state, "MONITOR DELETED").await
 }
 
 async fn monitor_history(State(state): State<AppState>, Path(id): Path<i64>) -> WebResult {
@@ -314,6 +320,16 @@ async fn render_grid(state: &AppState) -> WebResult {
     render(MonitorGridTemplate {
         monitors: monitor_views(state).await?,
     })
+}
+
+async fn render_grid_with_toast(state: &AppState, message: &'static str) -> WebResult {
+    let grid = MonitorGridTemplate {
+        monitors: monitor_views(state).await?,
+    }
+    .render()?;
+    let toast = ToastTemplate { message }.render()?;
+
+    Ok(Html(format!("{grid}{toast}")))
 }
 
 async fn render_card(state: &AppState, id: i64) -> WebResult {

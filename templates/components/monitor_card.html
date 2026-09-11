@@ -57,13 +57,13 @@
     </div>
   </div>
 
-  <div class="flex flex-wrap gap-2 border-t border-green-900/50 pt-3">
+  <div class="grid grid-cols-2 gap-2 border-t border-green-900/50 pt-3">
     <button
       hx-post="/monitors/{{ monitor.id }}/check"
       hx-target="closest div.monitor-card-root"
       hx-swap="outerHTML"
       hx-indicator="#spin-{{ monitor.id }}"
-      class="flex-1 min-w-24 flex items-center justify-center gap-1 px-3 py-2 rounded border border-green-900 bg-black/40
+      class="flex items-center justify-center gap-1 px-3 py-2 rounded border border-green-900 bg-black/40
              text-green-600 text-xs font-bold tracking-wider
              hover:bg-green-900/40 hover:border-green-500 hover:text-green-300
              focus:outline-none focus:ring-1 focus:ring-green-500
@@ -74,7 +74,7 @@
     <button
       hx-get="/monitors/{{ monitor.id }}/history"
       hx-target="#modal-container"
-      class="flex-1 min-w-24 flex items-center justify-center gap-1 px-3 py-2 rounded border border-green-900 bg-black/40
+      class="flex items-center justify-center gap-1 px-3 py-2 rounded border border-green-900 bg-black/40
              text-green-600 text-xs font-bold tracking-wider
              hover:bg-green-900/40 hover:border-green-500 hover:text-green-300
              focus:outline-none focus:ring-1 focus:ring-green-500
@@ -86,7 +86,7 @@
       hx-target="closest div.monitor-card-root"
       hx-swap="outerHTML"
       hx-confirm="Clear all history for {{ monitor.name }}?"
-      class="flex-1 min-w-24 flex items-center justify-center gap-1 px-3 py-2 rounded border border-green-900/60 bg-black/40
+      class="flex items-center justify-center gap-1 px-3 py-2 rounded border border-green-900/60 bg-black/40
              text-green-700 text-xs font-bold tracking-wider
              hover:bg-green-900/30 hover:border-green-500 hover:text-green-400
              focus:outline-none focus:ring-1 focus:ring-green-700
@@ -96,7 +96,7 @@
     <button
       hx-get="/monitors/{{ monitor.id }}/edit"
       hx-target="#modal-container"
-      class="flex-1 min-w-24 flex items-center justify-center gap-1 px-3 py-2 rounded border border-green-900 bg-black/40
+      class="flex items-center justify-center gap-1 px-3 py-2 rounded border border-green-900 bg-black/40
              text-green-600 text-xs font-bold tracking-wider
              hover:bg-green-900/40 hover:border-green-500 hover:text-green-300
              focus:outline-none focus:ring-1 focus:ring-green-500
@@ -107,7 +107,7 @@
       hx-delete="/monitors/{{ monitor.id }}"
       hx-target="#monitors-grid"
       hx-confirm="Delete monitor {{ monitor.name }}?"
-      class="flex-1 min-w-24 flex items-center justify-center gap-1 px-3 py-2 rounded border border-red-900/60 bg-black/40
+      class="col-span-2 flex items-center justify-center gap-1 px-3 py-2 rounded border border-red-900/60 bg-black/40
              text-red-600 text-xs font-bold tracking-wider
              hover:bg-red-900/30 hover:border-red-500 hover:text-red-400
              focus:outline-none focus:ring-1 focus:ring-red-600
