@@ -1,145 +1,49 @@
 use axum::{
     extract::{Path, State},
     response::Json,
-    routing::{delete, get, post, put},
+    routing::get,
     Router,
 };
 use serde_json::json;
-use std::sync::Arc;
 
-use crate::db::DbPool;
-use crate::error::AppError as AE;
+use crate::error::AppResult;
 use crate::models::{CreateMonitor, Monitor, UpdateMonitor};
+use crate::store::{self, AppState};
 
-pub fn router(pool: DbPool) -> Router {
-    let state = Arc::new(pool);
-
+pub fn router() -> Router<AppState> {
     Router::new()
-        .route("/", get(list_monitors))
-        .route("/", post(create_monitor))
-        .route("/{id}", get(get_monitor))
-        .route("/{id}", put(update_monitor))
-        .route("/{id}", delete(delete_monitor))
-        .with_state(state)
+        .route("/monitors", get(list).post(create))
+        .route("/monitors/{id}", get(read).put(update).delete(delete))
 }
 
-async fn list_monitors(State(pool): State<Arc<DbPool>>) -> Result<Json<Vec<Monitor>>, AE> {
-    let monitors = sqlx::query_as::<_, Monitor>("SELECT * FROM monitors ORDER BY id")
-        .fetch_all(&*pool)
-        .await
-        .map_err(AE::from)?;
-
-    Ok(Json(monitors))
+async fn list(State(state): State<AppState>) -> AppResult<Json<Vec<Monitor>>> {
+    Ok(Json(store::list_monitors(&state).await?))
 }
 
-async fn get_monitor(
-    Path(id): Path<i64>,
-    State(pool): State<Arc<DbPool>>,
-) -> Result<Json<Monitor>, AE> {
-    let monitor = sqlx::query_as::<_, Monitor>("SELECT * FROM monitors WHERE id = ?")
-        .bind(id)
-        .fetch_optional(&*pool)
-        .await
-        .map_err(AE::from)?
-        .ok_or_else(|| AE::NotFound(format!("Monitor {} not found", id)))?;
-
-    Ok(Json(monitor))
+async fn read(State(state): State<AppState>, Path(id): Path<i64>) -> AppResult<Json<Monitor>> {
+    Ok(Json(store::get_monitor(&state, id).await?))
 }
 
-async fn create_monitor(
-    State(pool): State<Arc<DbPool>>,
+async fn create(
+    State(state): State<AppState>,
     Json(payload): Json<CreateMonitor>,
-) -> Result<Json<Monitor>, AE> {
-    let result = sqlx::query(
-        r#"
-        INSERT INTO monitors (name, url, check_interval_secs, timeout_secs)
-        VALUES (?, ?, ?, ?)
-        "#,
-    )
-    .bind(&payload.name)
-    .bind(&payload.url)
-    .bind(payload.check_interval_secs.unwrap_or(60))
-    .bind(payload.timeout_secs.unwrap_or(30))
-    .execute(&*pool)
-    .await
-    .map_err(AE::from)?;
-
-    let id = result.last_insert_rowid();
-
-    let monitor = sqlx::query_as::<_, Monitor>("SELECT * FROM monitors WHERE id = ?")
-        .bind(id)
-        .fetch_one(&*pool)
-        .await
-        .map_err(AE::from)?;
-
-    Ok(Json(monitor))
+) -> AppResult<Json<Monitor>> {
+    Ok(Json(store::create_monitor(&state, payload).await?))
 }
 
-async fn update_monitor(
+async fn update(
+    State(state): State<AppState>,
     Path(id): Path<i64>,
-    State(pool): State<Arc<DbPool>>,
     Json(payload): Json<UpdateMonitor>,
-) -> Result<Json<Monitor>, AE> {
-    let existing = sqlx::query_as::<_, Monitor>("SELECT * FROM monitors WHERE id = ?")
-        .bind(id)
-        .fetch_optional(&*pool)
-        .await
-        .map_err(AE::from)?
-        .ok_or_else(|| AE::NotFound(format!("Monitor {} not found", id)))?;
-
-    let name = if let Some(ref n) = payload.name {
-        n.clone()
-    } else {
-        existing.name.clone()
-    };
-    let url = if let Some(ref u) = payload.url {
-        u.clone()
-    } else {
-        existing.url.clone()
-    };
-    let check_interval_secs = payload
-        .check_interval_secs
-        .unwrap_or(existing.check_interval_secs);
-    let timeout_secs = payload.timeout_secs.unwrap_or(existing.timeout_secs);
-
-    sqlx::query(
-        r#"
-        UPDATE monitors 
-        SET name = ?, url = ?, check_interval_secs = ?, timeout_secs = ?, updated_at = datetime('now')
-        WHERE id = ?
-        "#,
-    )
-    .bind(&name)
-    .bind(&url)
-    .bind(check_interval_secs)
-    .bind(timeout_secs)
-    .bind(id)
-    .execute(&*pool)
-    .await
-    .map_err(AE::from)?;
-
-    let monitor = sqlx::query_as::<_, Monitor>("SELECT * FROM monitors WHERE id = ?")
-        .bind(id)
-        .fetch_one(&*pool)
-        .await
-        .map_err(AE::from)?;
-
-    Ok(Json(monitor))
+) -> AppResult<Json<Monitor>> {
+    Ok(Json(store::update_monitor(&state, id, payload).await?))
 }
 
-async fn delete_monitor(
+async fn delete(
+    State(state): State<AppState>,
     Path(id): Path<i64>,
-    State(pool): State<Arc<DbPool>>,
-) -> Result<Json<serde_json::Value>, AE> {
-    let result = sqlx::query("DELETE FROM monitors WHERE id = ?")
-        .bind(id)
-        .execute(&*pool)
-        .await
-        .map_err(AE::from)?;
+) -> AppResult<Json<serde_json::Value>> {
+    store::delete_monitor(&state, id).await?;
 
-    if result.rows_affected() == 0 {
-        return Err(AE::NotFound(format!("Monitor {} not found", id)));
-    }
-
-    Ok(Json(json!({"deleted": true})))
+    Ok(Json(json!({ "deleted": true })))
 }

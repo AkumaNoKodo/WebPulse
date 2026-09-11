@@ -5,246 +5,169 @@ use axum::{
     routing::{get, post},
     Router,
 };
-use serde::Deserialize;
 use tower_http::services::ServeDir;
 
-use crate::db::DbPool;
-use crate::models::{History, Monitor};
-use crate::services::checker::Checkable;
+use crate::error::WebError;
+use crate::models::{CreateMonitor, History, HistoryStatus, Monitor, UpdateMonitor};
+use crate::services::checker::probe;
+use crate::store::{self, AppState, Stats};
 
-#[allow(dead_code)]
+type WebResult = Result<Html<String>, WebError>;
+
+#[derive(Debug)]
 struct MonitorView {
     id: i64,
     name: String,
     url: String,
-    interval_seconds: i64,
-    status: String,
+    check_interval_secs: i64,
+    timeout_secs: i64,
+    status: &'static str,
     last_check: String,
-    uptime: f64, // 0.0 – 1.0, or -1.0 if no data
+    uptime: f64,
     uptime_str: String,
     avg_response_ms: String,
     sparkline: String,
 }
 
 impl MonitorView {
-    fn from_monitor_with_history(monitor: Monitor, history: &[History]) -> Self {
-        let status = monitor.status.to_string();
-        let last_check = monitor
-            .last_check_at
-            .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
-            .unwrap_or_else(|| "Never".to_string());
-
+    fn new(monitor: Monitor, history: &[History]) -> Self {
         let (uptime, uptime_str) = if history.is_empty() {
-            (-1.0_f64, "N/A".to_string())
+            (-1.0, "N/A".to_string())
         } else {
             let up = history
                 .iter()
-                .filter(|h| matches!(h.status, crate::models::HistoryStatus::Up))
+                .filter(|h| h.status == HistoryStatus::Up)
                 .count();
-            let ratio = (up as f64 / history.len() as f64).min(1.0);
-            (ratio, format!("{:.6}", ratio))
+            let ratio = up as f64 / history.len() as f64;
+            (ratio, format!("{:.2}%", ratio * 100.0))
         };
 
-        let avg_response_ms = {
-            let times: Vec<i64> = history.iter().filter_map(|h| h.response_time_ms).collect();
-            if times.is_empty() {
-                "N/A".to_string()
-            } else {
-                let avg = times.iter().sum::<i64>() / times.len() as i64;
-                format!("{avg}ms")
-            }
+        let response_times: Vec<i64> = history.iter().filter_map(|h| h.response_time_ms).collect();
+        let avg_response_ms = if response_times.is_empty() {
+            "N/A".to_string()
+        } else {
+            let average = response_times.iter().sum::<i64>() / response_times.len() as i64;
+            format!("{average}ms")
         };
-
-        let sparkline = build_sparkline(history);
 
         MonitorView {
             id: monitor.id,
             name: monitor.name,
             url: monitor.url,
-            interval_seconds: monitor.check_interval_secs,
-            status,
-            last_check,
+            check_interval_secs: monitor.check_interval_secs,
+            timeout_secs: monitor.timeout_secs,
+            status: monitor.status.as_str(),
+            last_check: monitor
+                .last_check_at
+                .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
+                .unwrap_or_else(|| "Never".to_string()),
             uptime,
             uptime_str,
             avg_response_ms,
-            sparkline,
+            sparkline: build_sparkline(history),
         }
     }
 }
 
-/// Build an ASCII art vertical bar chart from history entries.
+/// ASCII bar chart of the recent response times, one column per check.
 ///
-/// Renders up to 100 of the most recent checks. Each check = one column.
-/// Column width = 1 char, separated by 1 space → total char width = 2N-1.
-///
-/// The <pre> carries `--chart-char-count` as a CSS custom property so the
-/// stylesheet scales font-size to exactly fill the card width — no JS needed.
+/// The `<pre>` carries `--chart-char-count` so the stylesheet can scale font-size
+/// to fill the card width exactly, which keeps this free of client-side script.
 fn build_sparkline(history: &[History]) -> String {
     const ROWS: usize = 6;
-    const MAX_COLS: usize = 100;
 
-    let points: Vec<&History> = {
-        let start = if history.len() > MAX_COLS {
-            history.len() - MAX_COLS
-        } else {
-            0
-        };
-        history[start..].iter().collect()
-    };
-
-    if points.is_empty() {
+    if history.is_empty() {
         return String::new();
     }
 
-    let n = points.len();
-
-    let max_val = points
+    let max_response_time = history
         .iter()
-        .filter_map(|p| p.response_time_ms.map(|v| v as f64))
+        .filter_map(|h| h.response_time_ms.map(|ms| ms as f64))
         .fold(1.0_f64, f64::max);
 
-    struct Col {
-        height: usize,
-        down: bool,
-    }
-    let cols: Vec<Col> = points
+    let columns: Vec<(usize, bool)> = history
         .iter()
-        .map(|p| {
-            let down = matches!(p.status, crate::models::HistoryStatus::Down);
-            let height = match p.response_time_ms {
-                Some(ms) => {
-                    let ratio = ms as f64 / max_val;
-                    ((ratio * ROWS as f64).round() as usize).max(1).min(ROWS)
-                }
+        .map(|entry| {
+            let height = match entry.response_time_ms {
+                Some(ms) => (((ms as f64 / max_response_time) * ROWS as f64).round() as usize)
+                    .clamp(1, ROWS),
                 None => ROWS,
             };
-            Col { height, down }
+            (height, entry.status == HistoryStatus::Down)
         })
         .collect();
 
-    // Bar rows (row 0 = top/tallest)
     let mut lines: Vec<String> = (0..ROWS)
         .map(|row| {
             let threshold = ROWS - row;
-            let mut line = String::new();
-            for (i, c) in cols.iter().enumerate() {
-                if i > 0 {
-                    line.push(' ');
-                }
-                if c.height >= threshold {
-                    if c.down {
-                        line.push_str("<span style=\"color:#ef4444\">!</span>");
-                    } else {
-                        line.push('\u{2588}'); // █
-                    }
+            columns
+                .iter()
+                .map(|&(height, down)| match (height >= threshold, down) {
+                    (false, _) => " ".to_string(),
+                    (true, true) => "<span style=\"color:#ef4444\">!</span>".to_string(),
+                    (true, false) => "\u{2588}".to_string(),
+                })
+                .collect::<Vec<_>>()
+                .join(" ")
+        })
+        .collect();
+
+    lines.push(
+        columns
+            .iter()
+            .map(|&(_, down)| {
+                if down {
+                    "<span style=\"color:#ef4444\">\u{2534}</span>".to_string()
                 } else {
-                    line.push(' ');
+                    "\u{2500}".to_string()
                 }
-            }
-            line
-        })
-        .collect();
+            })
+            .collect::<Vec<_>>()
+            .join("\u{2500}"),
+    );
 
-    // Baseline ─ / ┴ (red under DOWN)
-    let baseline: String = cols
-        .iter()
-        .enumerate()
-        .map(|(i, c)| {
-            let sep = if i > 0 { "\u{2500}" } else { "" }; // ─
-            if c.down {
-                format!("{}<span style=\"color:#ef4444\">\u{2534}</span>", sep) // ┴
-            } else {
-                format!("{}\u{2500}", sep) // ─
-            }
-        })
-        .collect();
-    lines.push(baseline);
+    let char_count = 2 * history.len() - 1;
+    let first = history[0].checked_at.format("%H:%M:%S").to_string();
+    let last = history[history.len() - 1]
+        .checked_at
+        .format("%H:%M:%S")
+        .to_string();
+    let padding = char_count.saturating_sub(first.len() + last.len()).max(1);
 
-    // Timestamp row
-    fn fmt_ts(dt: Option<chrono::DateTime<chrono::Utc>>) -> String {
-        match dt {
-            Some(d) => d.format("%H:%M:%S").to_string(),
-            None => String::new(),
-        }
-    }
-    let ts_first = fmt_ts(points.first().and_then(|p| p.checked_at));
-    let ts_last = fmt_ts(points.last().and_then(|p| p.checked_at));
-
-    if !ts_first.is_empty() || !ts_last.is_empty() {
-        let chart_chars = 2 * n - 1;
-        let used = ts_first.len() + ts_last.len();
-        let padding = if chart_chars > used {
-            chart_chars - used
-        } else {
-            1
-        };
-        lines.push(format!(
-            "<span style=\"color:#22c55e55\">{}{}{}</span>",
-            ts_first,
-            " ".repeat(padding),
-            ts_last,
-        ));
-    }
-
-    // CSS custom property tells the stylesheet how many chars wide this chart is,
-    // allowing it to scale font-size so the chart fills the card width exactly.
-    let char_count = 2 * n - 1;
+    lines.push(format!(
+        "<span style=\"color:#22c55e55\">{first}{}{last}</span>",
+        " ".repeat(padding)
+    ));
 
     format!(
-        "<pre class=\"ascii-chart\" style=\"--chart-char-count:{char_count}\">{content}</pre>",
-        char_count = char_count,
-        content = lines.join("\n"),
+        "<pre class=\"ascii-chart\" style=\"--chart-char-count:{char_count}\">{}</pre>",
+        lines.join("\n")
     )
-}
-
-struct HistoryView {
-    status: String,
-    response_time_ms: Option<i64>,
-    error_message: Option<String>,
-    checked_at: Option<String>,
-}
-
-impl From<History> for HistoryView {
-    fn from(h: History) -> Self {
-        let status = match h.status {
-            crate::models::HistoryStatus::Up => "up".to_string(),
-            crate::models::HistoryStatus::Down => "down".to_string(),
-        };
-
-        HistoryView {
-            status,
-            response_time_ms: h.response_time_ms,
-            error_message: h.error_message,
-            checked_at: h
-                .checked_at
-                .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string()),
-        }
-    }
 }
 
 #[derive(Template)]
 #[template(path = "monitors.html")]
 struct MonitorsTemplate {
+    stats: Stats,
     monitors: Vec<MonitorView>,
-    total: usize,
-    online: usize,
-    offline: usize,
-    pending: usize,
 }
 
 #[derive(Template)]
 #[template(path = "components/stats.html")]
 struct StatsTemplate {
-    total: usize,
-    online: usize,
-    offline: usize,
-    pending: usize,
+    stats: Stats,
 }
 
 #[derive(Template)]
 #[template(path = "components/monitor_grid.html")]
 struct MonitorGridTemplate {
     monitors: Vec<MonitorView>,
+}
+
+#[derive(Template)]
+#[template(path = "components/monitor_card.html")]
+struct MonitorCardTemplate {
+    monitor: MonitorView,
 }
 
 #[derive(Template)]
@@ -260,369 +183,145 @@ struct EditMonitorFormTemplate {
 #[derive(Template)]
 #[template(path = "components/monitor_history.html")]
 struct MonitorHistoryTemplate {
-    histories: Vec<HistoryView>,
+    name: String,
+    entries: Vec<History>,
 }
 
-#[derive(Deserialize)]
-pub struct CreateMonitorForm {
-    pub name: String,
-    pub url: String,
-    pub interval_seconds: u64,
-}
-
-#[derive(Deserialize)]
-pub struct UpdateMonitorForm {
-    pub name: String,
-    pub url: String,
-    pub interval_seconds: u64,
-}
-
-async fn fetch_monitor_views(
-    pool: &DbPool,
-) -> Result<Vec<MonitorView>, (axum::http::StatusCode, String)> {
-    let monitors: Vec<Monitor> = sqlx::query_as::<_, Monitor>("SELECT * FROM monitors ORDER BY id")
-        .fetch_all(pool)
-        .await
-        .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-
-    let mut views = Vec::with_capacity(monitors.len());
-
-    for monitor in monitors {
-        let mut history: Vec<History> = sqlx::query_as::<_, History>(
-            "SELECT * FROM history WHERE monitor_id = ? ORDER BY checked_at DESC LIMIT 100",
+pub fn router() -> Router<AppState> {
+    Router::new()
+        .route("/", get(index))
+        .route("/partial/stats", get(partial_stats))
+        .route("/partial/monitors", get(partial_monitors))
+        .route("/monitors", post(create_monitor))
+        .route("/monitors/new", get(new_monitor_form))
+        .route(
+            "/monitors/{id}",
+            post(update_monitor).delete(delete_monitor),
         )
-        .bind(monitor.id)
-        .fetch_all(pool)
-        .await
-        .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-
-        history.reverse();
-
-        views.push(MonitorView::from_monitor_with_history(monitor, &history));
-    }
-
-    Ok(views)
+        .route("/monitors/{id}/edit", get(edit_monitor_form))
+        .route("/monitors/{id}/check", post(check_now))
+        .route(
+            "/monitors/{id}/history",
+            get(monitor_history).delete(clear_history),
+        )
+        .route("/clear-modal", get(clear_modal))
+        .nest_service("/static", ServeDir::new("static"))
 }
 
-async fn index(
-    State(pool): State<DbPool>,
-) -> Result<Html<String>, (axum::http::StatusCode, String)> {
-    let monitors = fetch_monitor_views(&pool).await?;
-
-    let total = monitors.len();
-    let online = monitors.iter().filter(|m| m.status == "up").count();
-    let offline = monitors.iter().filter(|m| m.status == "down").count();
-    let pending = monitors.iter().filter(|m| m.status == "unknown").count();
-
-    let template = MonitorsTemplate {
-        monitors,
-        total,
-        online,
-        offline,
-        pending,
-    };
-
-    Ok(Html(template.render().unwrap()))
+async fn index(State(state): State<AppState>) -> WebResult {
+    render(MonitorsTemplate {
+        stats: store::stats(&state).await?,
+        monitors: monitor_views(&state).await?,
+    })
 }
 
-async fn partial_stats(
-    State(pool): State<DbPool>,
-) -> Result<Html<String>, (axum::http::StatusCode, String)> {
-    let monitors = fetch_monitor_views(&pool).await?;
-
-    let total = monitors.len();
-    let online = monitors.iter().filter(|m| m.status == "up").count();
-    let offline = monitors.iter().filter(|m| m.status == "down").count();
-    let pending = monitors.iter().filter(|m| m.status == "unknown").count();
-
-    let template = StatsTemplate {
-        total,
-        online,
-        offline,
-        pending,
-    };
-
-    Ok(Html(template.render().unwrap()))
+async fn partial_stats(State(state): State<AppState>) -> WebResult {
+    render(StatsTemplate {
+        stats: store::stats(&state).await?,
+    })
 }
 
-async fn partial_monitors(
-    State(pool): State<DbPool>,
-) -> Result<Html<String>, (axum::http::StatusCode, String)> {
-    let monitors = fetch_monitor_views(&pool).await?;
-    let template = MonitorGridTemplate { monitors };
-
-    Ok(Html(template.render().unwrap()))
+async fn partial_monitors(State(state): State<AppState>) -> WebResult {
+    render_grid(&state).await
 }
 
-async fn new_monitor_form() -> Html<String> {
-    let template = NewMonitorFormTemplate;
-
-    Html(template.render().unwrap())
+async fn new_monitor_form() -> WebResult {
+    render(NewMonitorFormTemplate)
 }
 
-async fn edit_monitor_form(
-    Path(id): Path<i64>,
-    State(pool): State<DbPool>,
-) -> Result<Html<String>, (axum::http::StatusCode, String)> {
-    let monitor = sqlx::query_as::<_, Monitor>("SELECT * FROM monitors WHERE id = ?")
-        .bind(id)
-        .fetch_optional(&pool)
-        .await
-        .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or_else(|| {
-            (
-                axum::http::StatusCode::NOT_FOUND,
-                "Monitor not found".to_string(),
-            )
-        })?;
-
-    let mut history: Vec<History> = sqlx::query_as::<_, History>(
-        "SELECT * FROM history WHERE monitor_id = ? ORDER BY checked_at DESC LIMIT 100",
-    )
-    .bind(monitor.id)
-    .fetch_all(&pool)
-    .await
-    .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-
-    history.reverse();
-
-    let monitor_view = MonitorView::from_monitor_with_history(monitor, &history);
-    let template = EditMonitorFormTemplate {
-        monitor: monitor_view,
-    };
-
-    Ok(Html(template.render().unwrap()))
-}
-
-async fn update_monitor(
-    Path(id): Path<i64>,
-    State(pool): State<DbPool>,
-    Form(form): Form<UpdateMonitorForm>,
-) -> Result<Html<String>, (axum::http::StatusCode, String)> {
-    sqlx::query(
-        r#"
-        UPDATE monitors
-        SET name = ?, url = ?, check_interval_secs = ?, updated_at = datetime('now')
-        WHERE id = ?
-        "#,
-    )
-    .bind(&form.name)
-    .bind(&form.url)
-    .bind(form.interval_seconds as i64)
-    .bind(id)
-    .execute(&pool)
-    .await
-    .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-
-    let monitor = sqlx::query_as::<_, Monitor>("SELECT * FROM monitors WHERE id = ?")
-        .bind(id)
-        .fetch_one(&pool)
-        .await
-        .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-
-    let mut history: Vec<History> = sqlx::query_as::<_, History>(
-        "SELECT * FROM history WHERE monitor_id = ? ORDER BY checked_at DESC LIMIT 100",
-    )
-    .bind(id)
-    .fetch_all(&pool)
-    .await
-    .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-
-    history.reverse();
-
-    let monitor_view = MonitorView::from_monitor_with_history(monitor, &history);
-    let template = EditMonitorFormTemplate {
-        monitor: monitor_view,
-    };
-
-    Ok(Html(template.render().unwrap()))
-}
-
-async fn monitor_history(
-    Path(id): Path<i64>,
-    State(pool): State<DbPool>,
-) -> Result<Html<String>, (axum::http::StatusCode, String)> {
-    let mut histories: Vec<History> = sqlx::query_as::<_, History>(
-        "SELECT * FROM history WHERE monitor_id = ? ORDER BY checked_at DESC LIMIT 100",
-    )
-    .bind(id)
-    .fetch_all(&pool)
-    .await
-    .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-
-    histories.reverse();
-
-    let histories: Vec<HistoryView> = histories.into_iter().map(HistoryView::from).collect();
-    let template = MonitorHistoryTemplate { histories };
-
-    Ok(Html(template.render().unwrap()))
+async fn edit_monitor_form(State(state): State<AppState>, Path(id): Path<i64>) -> WebResult {
+    render(EditMonitorFormTemplate {
+        monitor: monitor_view(&state, id).await?,
+    })
 }
 
 async fn create_monitor(
-    State(pool): State<DbPool>,
-    Form(form): Form<CreateMonitorForm>,
-) -> Result<Html<String>, (axum::http::StatusCode, String)> {
-    sqlx::query(
-        r#"
-        INSERT INTO monitors (name, url, check_interval_secs)
-        VALUES (?, ?, ?)
-        "#,
-    )
-    .bind(&form.name)
-    .bind(&form.url)
-    .bind(form.interval_seconds as i64)
-    .execute(&pool)
-    .await
-    .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    State(state): State<AppState>,
+    Form(input): Form<CreateMonitor>,
+) -> WebResult {
+    store::create_monitor(&state, input).await?;
 
-    let monitors = fetch_monitor_views(&pool).await?;
-    let template = MonitorGridTemplate { monitors };
-
-    Ok(Html(template.render().unwrap()))
+    render_grid(&state).await
 }
 
-async fn delete_monitor(
+async fn update_monitor(
+    State(state): State<AppState>,
     Path(id): Path<i64>,
-    State(pool): State<DbPool>,
-) -> Result<Html<String>, (axum::http::StatusCode, String)> {
-    sqlx::query("DELETE FROM history WHERE monitor_id = ?")
-        .bind(id)
-        .execute(&pool)
-        .await
-        .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    Form(input): Form<UpdateMonitor>,
+) -> WebResult {
+    store::update_monitor(&state, id, input).await?;
 
-    sqlx::query("DELETE FROM monitors WHERE id = ?")
-        .bind(id)
-        .execute(&pool)
-        .await
-        .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    render_grid(&state).await
+}
 
-    let monitors = fetch_monitor_views(&pool).await?;
-    let template = MonitorGridTemplate { monitors };
+async fn delete_monitor(State(state): State<AppState>, Path(id): Path<i64>) -> WebResult {
+    store::delete_monitor(&state, id).await?;
 
-    Ok(Html(template.render().unwrap()))
+    render_grid(&state).await
+}
+
+async fn monitor_history(State(state): State<AppState>, Path(id): Path<i64>) -> WebResult {
+    let monitor = store::get_monitor(&state, id).await?;
+    let mut entries = store::history(&state, id).await?;
+    entries.reverse();
+
+    render(MonitorHistoryTemplate {
+        name: monitor.name,
+        entries,
+    })
+}
+
+async fn clear_history(State(state): State<AppState>, Path(id): Path<i64>) -> WebResult {
+    store::clear_history(&state, id).await?;
+
+    render_card(&state, id).await
+}
+
+async fn check_now(State(state): State<AppState>, Path(id): Path<i64>) -> WebResult {
+    let monitor = store::get_monitor(&state, id).await?;
+    let timeout = std::time::Duration::from_secs(monitor.timeout_secs.max(1) as u64);
+    let result = probe(&state.http, &monitor.url, timeout).await;
+
+    store::record_check(&state, id, &result).await?;
+
+    render_card(&state, id).await
 }
 
 async fn clear_modal() -> Html<&'static str> {
     Html("")
 }
 
-async fn clear_history(
-    Path(id): Path<i64>,
-    State(pool): State<DbPool>,
-) -> Result<Html<String>, (axum::http::StatusCode, String)> {
-    sqlx::query("DELETE FROM history WHERE monitor_id = ?")
-        .bind(id)
-        .execute(&pool)
-        .await
-        .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+async fn monitor_views(state: &AppState) -> Result<Vec<MonitorView>, WebError> {
+    let monitors = store::list_monitors(state).await?;
+    let mut views = Vec::with_capacity(monitors.len());
 
-    sqlx::query(
-        "UPDATE monitors SET status = 'unknown', last_check_at = NULL, last_response_time_ms = NULL, updated_at = datetime('now') WHERE id = ?",
-    )
-    .bind(id)
-    .execute(&pool)
-    .await
-    .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-
-    render_single_monitor_card(id, &pool).await
-}
-
-async fn check_now(
-    Path(id): Path<i64>,
-    State(pool): State<DbPool>,
-) -> Result<Html<String>, (axum::http::StatusCode, String)> {
-    let monitor = sqlx::query_as::<_, Monitor>("SELECT * FROM monitors WHERE id = ?")
-        .bind(id)
-        .fetch_optional(&pool)
-        .await
-        .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or_else(|| {
-            (
-                axum::http::StatusCode::NOT_FOUND,
-                "Monitor not found".to_string(),
-            )
-        })?;
-
-    let checker = crate::services::http_checker::HttpChecker::new(
-        monitor.id,
-        monitor.name.clone(),
-        monitor.url.clone(),
-        monitor.timeout_secs as u64,
-    );
-
-    let result = checker
-        .check(&pool)
-        .await
-        .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-
-    crate::services::checker::record_check_result(&pool, id, &result)
-        .await
-        .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-
-    render_single_monitor_card(id, &pool).await
-}
-
-async fn render_single_monitor_card(
-    id: i64,
-    pool: &DbPool,
-) -> Result<Html<String>, (axum::http::StatusCode, String)> {
-    let monitor = sqlx::query_as::<_, Monitor>("SELECT * FROM monitors WHERE id = ?")
-        .bind(id)
-        .fetch_optional(pool)
-        .await
-        .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or_else(|| {
-            (
-                axum::http::StatusCode::NOT_FOUND,
-                "Monitor not found".to_string(),
-            )
-        })?;
-
-    let mut history: Vec<History> = sqlx::query_as::<_, History>(
-        "SELECT * FROM history WHERE monitor_id = ? ORDER BY checked_at DESC LIMIT 100",
-    )
-    .bind(id)
-    .fetch_all(pool)
-    .await
-    .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-
-    history.reverse();
-
-    let view = MonitorView::from_monitor_with_history(monitor, &history);
-
-    #[derive(askama::Template)]
-    #[template(path = "components/monitor_card.html")]
-    struct CardTemplate {
-        monitor: MonitorView,
+    for monitor in monitors {
+        let history = store::history(state, monitor.id).await?;
+        views.push(MonitorView::new(monitor, &history));
     }
 
-    let html = CardTemplate { monitor: view }
-        .render()
-        .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-
-    Ok(Html(html))
+    Ok(views)
 }
 
-pub fn web_router(pool: DbPool) -> Router {
-    Router::new()
-        .route("/", get(index))
-        .route("/partial/stats", get(partial_stats))
-        .route("/partial/monitors", get(partial_monitors))
-        .route("/monitors/new", get(new_monitor_form))
-        .route("/monitors/{id}/edit", get(edit_monitor_form))
-        .route(
-            "/monitors/{id}",
-            post(update_monitor).delete(delete_monitor),
-        )
-        .route("/monitors/{id}/history", get(monitor_history))
-        .route(
-            "/monitors/{id}/history/clear",
-            axum::routing::delete(clear_history),
-        )
-        .route("/monitors/{id}/check", post(check_now))
-        .route("/monitors", post(create_monitor))
-        .route("/clear-modal", get(clear_modal))
-        .nest_service("/static", ServeDir::new("static"))
-        .with_state(pool)
+async fn monitor_view(state: &AppState, id: i64) -> Result<MonitorView, WebError> {
+    let monitor = store::get_monitor(state, id).await?;
+    let history = store::history(state, id).await?;
+
+    Ok(MonitorView::new(monitor, &history))
+}
+
+async fn render_grid(state: &AppState) -> WebResult {
+    render(MonitorGridTemplate {
+        monitors: monitor_views(state).await?,
+    })
+}
+
+async fn render_card(state: &AppState, id: i64) -> WebResult {
+    render(MonitorCardTemplate {
+        monitor: monitor_view(state, id).await?,
+    })
+}
+
+fn render(template: impl Template) -> WebResult {
+    Ok(Html(template.render()?))
 }

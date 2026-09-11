@@ -3,7 +3,7 @@ TAILWIND_SHA256  := dc61b3ac6b8c9ca874c0cc4c57b2409791a64c5540404ca5f5367360babc
 TAILWIND         := bin/tailwindcss
 
 .DELETE_ON_ERROR:
-.PHONY: dev dev-rs dev-css css build prod logs clean fix
+.PHONY: dev dev-rs dev-css css build prod logs lint fmt test clean fix
 
 # ── Tooling ──────────────────────────────────────────────────────────────────
 
@@ -36,6 +36,18 @@ dev-css: $(TAILWIND)
 # Tailwind one-shot build (minified)
 css: $(TAILWIND)
 	$(TAILWIND) -i ./static/input.css -o ./static/output.css --minify
+
+# ── Checks ───────────────────────────────────────────────────────────────────
+
+lint:
+	cargo fmt --check
+	cargo clippy --all-targets --locked -- -D warnings
+
+fmt:
+	cargo fmt
+
+test:
+	cargo test --locked
 
 # ── Production Docker ────────────────────────────────────────────────────────
 

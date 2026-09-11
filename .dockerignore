@@ -8,3 +8,4 @@
 !static/input.css
 !static/fonts
 !static/vendor
+!rust-toolchain.toml

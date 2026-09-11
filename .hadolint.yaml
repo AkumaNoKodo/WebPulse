@@ -1,0 +1,6 @@
+ignored:
+  # Alpine and Debian move package versions inside a release, so pinning them
+  # here breaks the build on the next base image rebuild without adding any
+  # reproducibility the digest-pinned base image does not already provide.
+  - DL3008
+  - DL3018

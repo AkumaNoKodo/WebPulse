@@ -1,38 +1,26 @@
 use serde::Deserialize;
-use std::net::SocketAddr;
-use std::path::PathBuf;
+use std::path::Path;
 
-#[derive(Debug, Deserialize, Clone)]
+use anyhow::Context;
+
+#[derive(Debug, Default, Deserialize, Clone)]
+#[serde(default)]
 pub struct Config {
-    #[serde(default)]
     pub server: ServerConfig,
-    #[serde(default)]
     pub database: DatabaseConfig,
-    #[serde(default)]
     pub scheduler: SchedulerConfig,
-    #[serde(default)]
     pub monitor: MonitorConfig,
-    #[serde(default)]
     pub logging: LoggingConfig,
 }
 
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            server: ServerConfig::default(),
-            database: DatabaseConfig::default(),
-            scheduler: SchedulerConfig::default(),
-            monitor: MonitorConfig::default(),
-            logging: LoggingConfig::default(),
-        }
-    }
-}
-
 impl Config {
-    pub fn from_file(path: impl Into<PathBuf>) -> anyhow::Result<Self> {
-        let path = path.into();
-        let content = std::fs::read_to_string(&path)?;
-        toml::from_str(&content).map_err(|e| anyhow::anyhow!("Failed to parse config: {}", e))
+    pub fn from_file(path: impl AsRef<Path>) -> anyhow::Result<Self> {
+        let path = path.as_ref();
+        let content = std::fs::read_to_string(path)
+            .with_context(|| format!("failed to read config file {}", path.display()))?;
+
+        toml::from_str(&content)
+            .with_context(|| format!("failed to parse config file {}", path.display()))
     }
 }
 
@@ -52,14 +40,6 @@ impl Default for ServerConfig {
     }
 }
 
-impl ServerConfig {
-    pub fn address(&self) -> SocketAddr {
-        format!("{}:{}", self.host, self.port)
-            .parse()
-            .unwrap_or_else(|_| SocketAddr::from(([0, 0, 0, 0], self.port)))
-    }
-}
-
 #[derive(Debug, Deserialize, Clone)]
 #[serde(default)]
 pub struct DatabaseConfig {
@@ -70,7 +50,7 @@ pub struct DatabaseConfig {
 impl Default for DatabaseConfig {
     fn default() -> Self {
         Self {
-            path: "rustpulse.db".to_string(),
+            path: "webpulse.db".to_string(),
             max_connections: 10,
         }
     }
@@ -81,7 +61,6 @@ impl Default for DatabaseConfig {
 pub struct SchedulerConfig {
     pub max_concurrent_checks: usize,
     pub check_batch_interval_ms: u64,
-    pub heartbeat_check_interval_secs: u64,
 }
 
 impl Default for SchedulerConfig {
@@ -89,7 +68,6 @@ impl Default for SchedulerConfig {
         Self {
             max_concurrent_checks: 100,
             check_batch_interval_ms: 1000,
-            heartbeat_check_interval_secs: 30,
         }
     }
 }
@@ -97,9 +75,9 @@ impl Default for SchedulerConfig {
 #[derive(Debug, Deserialize, Clone)]
 #[serde(default)]
 pub struct MonitorConfig {
-    pub default_timeout_secs: u64,
-    pub default_interval_secs: u64,
-    pub history_retention_count: usize,
+    pub default_timeout_secs: i64,
+    pub default_interval_secs: i64,
+    pub history_retention_count: i64,
 }
 
 impl Default for MonitorConfig {
@@ -107,7 +85,7 @@ impl Default for MonitorConfig {
         Self {
             default_timeout_secs: 30,
             default_interval_secs: 60,
-            history_retention_count: 20,
+            history_retention_count: 100,
         }
     }
 }

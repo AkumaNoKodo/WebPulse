@@ -31,7 +31,6 @@ static/output.css
 /bin
 
 # Dev artifacts
-config.dev.toml
 dev.db
 dev.db-shm
 dev.db-wal
