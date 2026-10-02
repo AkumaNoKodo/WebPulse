@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
 # CSS build ─────────────────────────────────────────────────────────────────
-FROM alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b AS css
+FROM alpine:3.24@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6 AS css
 
 ARG TAILWIND_VERSION=4.3.3
 ARG TAILWIND_SHA256=a04d34ceacc8f52cbe8920ad846cdeb61d3d0021dba32db0d1f77c9d9fad7a6c
