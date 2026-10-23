@@ -26,7 +26,7 @@ COPY templates ./templates
 RUN tailwindcss -i ./static/input.css -o ./static/output.css --minify
 
 # Rust build ────────────────────────────────────────────────────────────────
-FROM rust:1.98.1@sha256:462a9af3c54fb4718850d3c602fc0e54452c20b1c12a4e4080fdb001d4b9acbf AS builder
+FROM rust:1.99.0@sha256:81015672d6939b0265f09adf96d5de125482bb1330106076956b0518e74edc90 AS builder
 
 WORKDIR /build
 
